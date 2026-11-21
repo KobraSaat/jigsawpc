@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'none'">
+  <title>root@archive: ~</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --background: #060b08;
+      --ink: #39ff88;
+      --muted: #208b54;
+      --bright: #a1ffb8;
+      --purple: #b976ff;
+      --pink: #ff3bbd;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: clamp(10px, 2.8vw, 54px);
+      background: var(--background);
+      color: var(--ink);
+      font: clamp(13px, min(1vw, 1.8vh), 20px)/1.38 "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+    }
+
+    main {
+      min-height: calc(100vh - 2 * clamp(10px, 2.8vw, 54px));
+      padding: clamp(16px, 3vw, 58px);
+      border: 1px solid #153c28;
+      border-radius: 10px;
+      background: radial-gradient(ellipse at 26% 32%, #0b1910 0%, var(--background) 76%);
+      box-shadow: inset 0 0 72px #020503, 0 0 24px #13342255;
+      text-shadow: 0 0 8px #39ff8855;
+    }
+
+    main::after {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      content: "";
+      background: repeating-linear-gradient(transparent 0 3px, #0003 3px 4px);
+    }
+
+    pre { margin: 0; font: inherit; }
+    .muted { color: var(--muted); text-shadow: none; }
+    .bright { color: var(--bright); }
+    .boot-accent { color: var(--purple); }
+    .prompt-mark { color: var(--pink); }
+    .cursor {
+      display: inline-block;
+      width: .58em;
+      height: 1em;
+      vertical-align: -.14em;
+      background: var(--bright);
+      box-shadow: 0 0 10px #39ff88a0;
+      animation: blink 1.1s step-end infinite;
+    }
+
+    @keyframes blink { 50% { opacity: 0; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .cursor { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <main aria-label="Archive access terminal">
+    <pre id="boot"></pre>
+    <section id="audit" aria-label="Session audit" hidden>
+      <pre><span class="bright">root@archive:~</span><span class="prompt-mark">#</span> ./session_audit.sh
+
+<span class="bright">[ OK ]</span> Authentication archive loaded
+<span class="bright">[ OK ]</span> Log integrity verified
+
+SYSTEM STATUS     : <span class="bright">ONLINE</span>
+ARCHIVE STATUS    : <span class="bright">STABLE</span>
+
+USERS ENTERED     : <span id="entered"></span>
+USERS EXITED      : <span id="exited"></span>
+USERS STILL INSIDE: <span id="inside" class="bright"></span>
+FAILED ATTEMPTS   : <span id="failed"></span>
+
+<span class="bright">TIME       UID    EVENT</span>
+<span class="muted">----------------------------</span>
+<span id="records"></span></pre>
+      <pre id="prompt" hidden><span class="bright">root@archive:~</span><span class="prompt-mark">#</span> <span class="cursor" aria-hidden="true"></span></pre>
+    </section>
+  </main>
+  <script>
+    const records = [
+      ['21:32:08', '481', 'DENIED'],
+      ['21:32:14', '481', 'DENIED'],
+      ['21:33:01', '731', 'LOGIN'],
+      ['21:33:25', '204', 'LOGIN'],
+      ['21:34:55', '731', 'LOGOUT'],
+      ['21:35:09', '619', 'DENIED'],
+      ['21:36:11', '286', 'LOGIN'],
+      ['21:37:14', '204', 'LOGOUT'],
+      ['21:38:21', '452', 'LOGIN'],
+      ['21:39:11', '286', 'LOGOUT'],
+      ['21:40:23', '990', 'DENIED'],
+      ['21:42:21', '771', 'LOGIN'],
+      ['21:44:23', '771', 'LOGOUT']
+    ];
+
+    const boot = document.getElementById('boot');
+    const audit = document.getElementById('audit');
+    const output = document.getElementById('records');
+    const prompt = document.getElementById('prompt');
+    const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+    const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    function writeLine(target, value, style) {
+      const line = document.createElement('span');
+      if (style) line.className = style;
+      line.textContent = value + '\n';
+      target.append(line);
+    }
+
+    async function runAudit() {
+      const bootMessages = [
+        ['[    0.000000] Linux kernel booting on archive', 'bright'],
+        ['[    0.541812] printk: console [tty1] enabled', 'muted'],
+        ['[    1.106403] Mounting authentication archive (read-only)', 'muted'],
+        ['[    1.684920] Started Local Audit Service.', 'muted'],
+        ['[    2.261630] Reached target Multi-User System.', 'muted'],
+        ['archive tty1', 'boot-accent']
+      ];
+
+      for (const [message, style] of bootMessages) {
+        writeLine(boot, message, style);
+        await wait(500);
+      }
+
+      const totals = { LOGIN: 0, LOGOUT: 0, DENIED: 0 };
+      const active = new Set();
+      for (const [, uid, event] of records) {
+        totals[event]++;
+        if (event === 'LOGIN') active.add(uid);
+        if (event === 'LOGOUT') active.delete(uid);
+      }
+
+      document.getElementById('entered').textContent = totals.LOGIN;
+      document.getElementById('exited').textContent = totals.LOGOUT;
+      document.getElementById('inside').textContent = active.size;
+      document.getElementById('failed').textContent = totals.DENIED;
+
+      boot.hidden = true;
+      audit.hidden = false;
+
+      for (const [time, uid, event] of records) {
+        if (!reducedMotion) await wait(105);
+        writeLine(output, time + '   ' + uid + '    ' + event);
+      }
+
+      output.append('\n');
+      prompt.hidden = false;
+    }
+
+    runAudit();
+  </script>
+</body>
+</html>
